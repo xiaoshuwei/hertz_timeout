@@ -3,15 +3,15 @@ package timeout
 import (
 	"bytes"
 	"fmt"
-	"github.com/gin-gonic/gin"
+	"github.com/cloudwego/hertz/pkg/network"
+	"github.com/cloudwego/hertz/pkg/protocol/http1/resp"
 	"net/http"
 	"sync"
 )
 
 // Writer is a writer with memory buffer
 type Writer struct {
-	//network.ExtWriter
-	gin.ResponseWriter
+	network.ExtWriter
 	body         *bytes.Buffer
 	headers      http.Header
 	mu           sync.Mutex
@@ -21,8 +21,8 @@ type Writer struct {
 }
 
 // NewWriter will return a timeout.Writer pointer
-func NewWriter(w gin.ResponseWriter, buf *bytes.Buffer) *Writer {
-	return &Writer{ResponseWriter: w, body: buf, headers: make(http.Header)}
+func NewWriter(w network.ExtWriter, buf *bytes.Buffer) *Writer {
+	return &Writer{ExtWriter: w, body: buf, headers: make(http.Header)}
 }
 
 // Write will write data to response body
@@ -57,6 +57,7 @@ func (w *Writer) WriteHeader(code int) {
 	checkWriteHeaderCode(code)
 
 	w.writeHeader(code)
+	resp.WriteHeader(w.ExtWriter)
 	w.ResponseWriter.WriteHeader(code)
 }
 
