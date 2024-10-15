@@ -7,8 +7,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 )
 
-var bufPool *BufferPool
-
 const (
 	defaultTimeout = 5 * time.Second
 )
@@ -34,8 +32,6 @@ func New(opts ...Option) app.HandlerFunc {
 	if t.timeout <= 0 {
 		return t.handler
 	}
-
-	bufPool = &BufferPool{}
 
 	return func(ctx context.Context, c *app.RequestContext) {
 		finish := make(chan struct{}, 1)
