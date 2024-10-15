@@ -2,7 +2,6 @@ package timeout
 
 import (
 	"context"
-	"github.com/cloudwego/hertz/pkg/network"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -42,9 +41,8 @@ func New(opts ...Option) app.HandlerFunc {
 		finish := make(chan struct{}, 1)
 		panicChan := make(chan interface{}, 1)
 
-		network.NewWriter(NewWriter())
-		c.GetResponse().HijackWriter(NewTimeoutBodyWriter())
 		copyRc := c.Copy()
+		copyRc.GetResponse().HijackWriter(NewTimeoutExtWriter())
 
 		go func() {
 			defer func() {
@@ -58,36 +56,20 @@ func New(opts ...Option) app.HandlerFunc {
 
 		select {
 		case p := <-panicChan:
-			tw.FreeBuffer()
-			c.Writer = w
 			panic(p)
 
 		case <-finish:
-			c.Next()
-			tw.mu.Lock()
-			defer tw.mu.Unlock()
-			dst := tw.ResponseWriter.Header()
-			for k, vv := range tw.Header() {
-				dst[k] = vv
-			}
-
-			if _, err := tw.ResponseWriter.Write(buffer.Bytes()); err != nil {
+			c.Next(ctx)
+			copyRc.VisitAllHeaders(func(key, value []byte) {
+				c.Header(string(key), string(value))
+			})
+			if _, err := c.Write(copyRc.GetResponse().Body()); err != nil {
 				panic(err)
 			}
-			tw.FreeBuffer()
-			bufPool.Put(buffer)
 
 		case <-time.After(t.timeout):
 			c.Abort()
-			tw.mu.Lock()
-			defer tw.mu.Unlock()
-			tw.timeout = true
-			tw.FreeBuffer()
-			bufPool.Put(buffer)
-
-			c.Writer = w
-			t.response(c)
-			c.Writer = tw
+			t.response(ctx, c)
 		}
 	}
 }

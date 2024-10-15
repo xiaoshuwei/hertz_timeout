@@ -1,14 +1,16 @@
 package timeout
 
 import (
+	"bytes"
 	"runtime"
 	"sync"
 
 	"github.com/cloudwego/hertz/pkg/network"
 )
 
-type timeoutBodyWriter struct {
-	w network.Writer
+type timeoutWriter struct {
+	tmp []byte
+	Buf *bytes.Buffer
 }
 
 var timeoutReaderPool sync.Pool
@@ -16,33 +18,37 @@ var timeoutReaderPool sync.Pool
 func init() {
 	timeoutReaderPool = sync.Pool{
 		New: func() interface{} {
-			return &timeoutBodyWriter{}
+			return &timeoutWriter{
+				Buf: &bytes.Buffer{},
+			}
 		},
 	}
 }
 
 // Write
-func (c *timeoutBodyWriter) Write(p []byte) (n int, err error) {
-	return c.w.WriteBinary(p)
+func (c *timeoutWriter) Write(p []byte) (n int, err error) {
+	c.tmp = p
+	return len(p), nil
 }
 
-func (c *timeoutBodyWriter) Flush() error {
-	return c.w.Flush()
+func (c *timeoutWriter) Flush() error {
+	_, err := c.Buf.Write(c.tmp)
+	return err
 }
 
 // Finalize
-func (c *timeoutBodyWriter) Finalize() error {
+func (c *timeoutWriter) Finalize() error {
 	return nil
 }
 
-func (c *timeoutBodyWriter) release() {
-	c.w = nil
+func (c *timeoutWriter) release() {
+	c.tmp = nil
+	c.Buf.Reset()
 	timeoutReaderPool.Put(c)
 }
 
-func NewTimeoutBodyWriter(w network.Writer) network.ExtWriter {
-	extWriter := timeoutReaderPool.Get().(*timeoutBodyWriter)
-	extWriter.w = w
-	runtime.SetFinalizer(extWriter, (*timeoutBodyWriter).release)
+func NewTimeoutExtWriter() network.ExtWriter {
+	extWriter := timeoutReaderPool.Get().(*timeoutWriter)
+	runtime.SetFinalizer(extWriter, (*timeoutWriter).release)
 	return extWriter
 }
